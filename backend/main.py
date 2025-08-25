@@ -19,10 +19,30 @@ load_dotenv()
 
 app = FastAPI(title="Perplexity Clone API", version="1.0.0")
 
+# Configure CORS origins
+allowed_origins = [
+    "http://localhost:3000",  # Local development
+    "https://localhost:3000",  # Local development with HTTPS
+]
+
+# Add production origins from environment
+frontend_url = os.getenv("FRONTEND_URL")
+if frontend_url:
+    allowed_origins.append(frontend_url)
+    # Also add common variations
+    if frontend_url.startswith("https://"):
+        # Add Vercel preview deployments
+        domain = frontend_url.replace("https://", "")
+        allowed_origins.append(f"https://*.{domain}")
+        # Add specific Vercel pattern
+        if "vercel.app" in domain:
+            base_name = domain.split('.')[0]
+            allowed_origins.append(f"https://{base_name}-*.vercel.app")
+
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "https://perplexity-clone.vercel.app"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -208,7 +228,9 @@ async def delete_thread(thread_id: str):
 async def connect_notion(user_id: str = "default_user"):
     """Create a Notion connection for the user"""
     try:
-        redirect_url = "http://localhost:3000/supermemory/callback"
+        # Use environment variable for frontend URL, fallback to localhost
+        frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
+        redirect_url = f"{frontend_url}/supermemory/callback"
         connection = await supermemory_service.create_notion_connection(redirect_url, user_id)
         return connection
     except Exception as e:

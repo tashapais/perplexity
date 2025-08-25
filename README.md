@@ -1,256 +1,177 @@
-# ResearchHub 🧠
+# Forest Search - AI-Powered Research Assistant
 
-A next-generation collaborative AI research engine that transforms how you discover, analyze, and share knowledge. Built with real-time collaboration, expert-curated sources, and interactive knowledge graphs.
+A beautiful, modern Perplexity clone built with Next.js 15 and FastAPI, featuring a calming forest green theme.
 
-![ResearchHub Demo](https://via.placeholder.com/800x400/f8fafc/64748b?text=ResearchHub+Demo)
+## ✨ Features
 
-## 🚀 Key Differentiators
+- **AI-Powered Search**: Get comprehensive answers with reliable sources
+- **Real-time Streaming**: Watch responses generate in real-time
+- **Thread History**: Easily revisit and manage previous conversations
+- **Multiple Search APIs**: Integrated with Brave Search and Exa APIs
+- **Beautiful UI**: Modern forest green theme with smooth animations
+- **Responsive Design**: Works perfectly on desktop and mobile
 
-**ResearchHub** stands out from other Perplexity clones with these unique features:
-
-### 🤝 Real-time Collaborative Research
-- Multiple researchers can work together simultaneously
-- Live cursor tracking and real-time updates
-- Shared research threads with version history
-- Team insights and collective knowledge building
-
-### 🎯 Expert Mode with Domain Specialization
-- **Finance**: Curated financial news, market data, and economic analysis
-- **Technology**: Latest tech trends, research papers, and industry insights
-- **Science**: Peer-reviewed sources, academic papers, and expert commentary
-- **Health**: Medical research, clinical studies, and health guidelines
-
-### 📊 Interactive Knowledge Graphs
-- Visual representation of research connections
-- Explore related concepts and source relationships
-- Interactive node exploration with detailed insights
-- Export and share knowledge maps
-
-### 📋 Research Templates
-- Pre-built frameworks for common research patterns
-- Market analysis, scientific research, policy analysis templates
-- Customizable prompts for different domains
-- Expert-designed research methodologies
-
-## 🛠 Technology Stack
-
-### Frontend
-- **Next.js 15** with App Router
-- **TypeScript** for type safety
-- **Tailwind CSS** for modern, responsive design
-- **Framer Motion** for smooth animations
-- **Socket.io** for real-time collaboration
-- **D3.js** for knowledge graph visualizations
-
-### Backend
-- **FastAPI** (Python) for high-performance API
-- **PostgreSQL** for reliable data storage
-- **Redis** for real-time features and caching
-- **Socket.io** for WebSocket connections
-- **OpenAI GPT-4** for AI-powered responses
-- **Brave Search API** for web search capabilities
-
-## 🏃‍♂️ Quick Start
+## 🚀 Quick Start
 
 ### Prerequisites
+
 - Node.js 18+ and npm
-- Python 3.9+
-- PostgreSQL
-- Redis
+- Python 3.8+
+- Redis (optional, for conversation storage)
 
-### Installation
+### One-Command Setup
 
-1. **Clone the repository**
 ```bash
-git clone https://github.com/yourusername/researchhub.git
-cd researchhub
+# Clone and setup everything
+git clone <repository-url>
+cd perplexity-clone
+./setup.sh
 ```
 
-2. **Frontend Setup**
+### Manual Installation
+
+1. **Install dependencies:**
 ```bash
-# Install dependencies
 npm install
-
-# Start development server
-npm run dev
+cd backend && pip install -r requirements.txt && cd ..
 ```
 
-3. **Backend Setup**
+2. **Install Redis (recommended):**
 ```bash
-# Navigate to backend directory
-cd backend
+# macOS
+brew install redis
+brew services start redis
 
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Set up environment variables
-cp .env.example .env
-# Edit .env with your API keys and database URLs
-
-# Start the server
-uvicorn main:app --reload
+# Ubuntu
+sudo apt-get install redis-server
+sudo systemctl start redis
 ```
 
-4. **Database Setup**
+3. **Configure API keys** (optional for demo):
 ```bash
-# Create PostgreSQL database
-createdb researchhub
-
-# Run migrations (when implemented)
-alembic upgrade head
+# Edit backend/.env and add your keys:
+BRAVE_API_KEY=your_brave_api_key_here        # Get from https://api.search.brave.com/
+EXA_API_KEY=your_exa_api_key_here            # Get from https://exa.ai/
+OPENAI_API_KEY=your_openai_api_key_here      # Get from https://platform.openai.com/
 ```
 
-### Environment Variables
+### Start Development
 
-Create a `.env` file in the backend directory:
-
-```env
-# Database
-DATABASE_URL=postgresql://username:password@localhost:5432/researchhub
-REDIS_URL=redis://localhost:6379
-
-# API Keys
-OPENAI_API_KEY=your_openai_api_key_here
-BRAVE_API_KEY=your_brave_search_api_key_here
-
-# JWT
-JWT_SECRET_KEY=your_jwt_secret_key_here
-
-# CORS
-ALLOWED_ORIGINS=http://localhost:3000
-```
-
-## 📖 API Documentation
-
-Once the backend is running, visit:
-- **API Docs**: http://localhost:8000/docs
-- **ReDoc**: http://localhost:8000/redoc
-
-### Key Endpoints
-
-- `POST /search` - Perform research search
-- `POST /search/stream` - Streaming search with real-time results
-- `GET /threads` - Get user's research threads
-- `GET /trending` - Get trending research topics
-- `GET /experts` - Get featured domain experts
-
-## 🎨 Design Philosophy
-
-ResearchHub embraces a **fresh, white design** with:
-
-- Clean, minimalist interface focusing on content
-- Subtle shadows and gentle gradients
-- Consistent spacing and typography
-- Responsive design for all devices
-- Accessible color contrast and navigation
-
-## 🔮 Unique Features
-
-### 1. Collaborative Research Rooms
-Join live research sessions with other users:
-```typescript
-// Real-time collaboration
-const room = await joinResearchRoom('quantum-computing-discussion')
-room.on('new_insight', (insight) => {
-  updateKnowledgeGraph(insight)
-})
-```
-
-### 2. Expert Mode Integration
-Access curated sources by domain:
-```typescript
-const searchConfig = {
-  query: "latest AI developments",
-  expertMode: "technology",
-  sources: "curated" // academic, news, expert-blogs
-}
-```
-
-### 3. Knowledge Graph Visualization
-Interactive exploration of research connections:
-```typescript
-const knowledgeGraph = new KnowledgeGraph({
-  nodes: research.concepts,
-  links: research.relationships,
-  interactive: true
-})
-```
-
-## 🔄 Development Workflow
-
-### Frontend Development
 ```bash
-npm run dev          # Start development server
-npm run build        # Build for production
-npm run lint         # Run ESLint
-npm run type-check   # TypeScript type checking
+# Start all services at once
+./dev.sh
+
+# Or start manually:
+# Terminal 1: redis-server (if not using brew services)
+# Terminal 2: cd backend && python main.py  
+# Terminal 3: npm run dev
 ```
 
-### Backend Development
-```bash
-uvicorn main:app --reload    # Start with auto-reload
-pytest                       # Run tests
-black .                      # Format code
-isort .                      # Sort imports
-```
+**🌐 Open [http://localhost:3000](http://localhost:3000)**
 
-## 🧪 Testing
+### Demo Mode
+Forest Search works without API keys in demo mode! It will show:
+- Mock search results with setup instructions
+- Fallback responses explaining how to configure real AI
+- Full UI functionality for testing
 
-### Frontend Tests
-```bash
-npm run test         # Run Jest tests
-npm run test:watch   # Run tests in watch mode
-npm run test:e2e     # Run Playwright E2E tests
-```
+Just run `./dev.sh` and start exploring!
 
-### Backend Tests
-```bash
-pytest                    # Run all tests
-pytest -v tests/test_api  # Verbose API tests
-pytest --cov=src         # Coverage report
-```
+## 🔧 Configuration
 
-## 📊 Performance Features
+### Search APIs
 
-- **Streaming Responses**: Real-time answer generation
-- **Efficient Caching**: Redis for frequently accessed data
-- **Optimized Queries**: PostgreSQL query optimization
-- **CDN Integration**: Fast static asset delivery
-- **Progressive Loading**: Incremental content loading
+The application supports multiple search providers:
+
+- **Brave Search API**: Primary search provider
+- **Exa API**: Fallback search provider with neural search capabilities
+
+Get your API keys from:
+- Brave Search: [https://api.search.brave.com/](https://api.search.brave.com/)
+- Exa: [https://exa.ai/](https://exa.ai/)
+
+### LLM Provider
+
+Currently configured to use OpenAI's GPT-4 for generating responses. Get your API key from [OpenAI](https://platform.openai.com/).
+
+## 🎨 Unique Differentiating Features
+
+This implementation includes several innovative features that set it apart from other answer engines:
+
+### 🧠 Smart Research Insights
+- **Research Quality Assessment**: Automatically evaluates source quality, recency, and consensus
+- **Confidence Indicators**: Visual indicators for answer reliability
+- **Key Point Extraction**: Automatic summarization of main findings
+
+### 💡 Intelligent Follow-up Questions
+- **Context-Aware Suggestions**: Generates relevant follow-up questions based on your query and response
+- **Research Templates**: Pre-built query templates for different research types (scientific, market analysis, educational)
+- **Trending Topics**: Time and season-aware trending research topics
+
+### 🎨 Thoughtful Design
+1. **Forest Theme**: Calming green color palette designed for focused research sessions
+2. **Smooth Animations**: Subtle transitions and micro-interactions for delightful UX
+3. **Real-time Streaming**: Live response generation with WebSockets
+4. **Smart Source Display**: Beautiful source cards with hover effects and quality indicators
+5. **Conversation Management**: Easy thread creation, deletion, and navigation
+6. **Responsive Layout**: Collapsible sidebar and mobile-friendly design
+
+### 🔍 Enhanced Search Experience
+- **Multi-Provider Search**: Integrated with both Brave Search and Exa APIs for comprehensive results
+- **Source Quality Analysis**: Automatic evaluation of source credibility and authority
+- **Research Tips**: Daily research tips and interesting facts to inspire curiosity
+
+## 🏗️ Architecture
+
+### Frontend (Next.js 15 + TypeScript)
+- **App Router**: Latest Next.js routing system
+- **Tailwind CSS**: Utility-first styling with custom forest theme
+- **WebSocket Client**: Real-time communication for streaming
+- **Component-based**: Modular, reusable React components
+
+### Backend (FastAPI + Python)
+- **REST API**: Standard endpoints for search and thread management
+- **WebSocket**: Real-time streaming responses
+- **Redis Storage**: Fast conversation persistence
+- **Multiple Search APIs**: Brave and Exa integration
+- **OpenAI Integration**: GPT-4 powered responses
+
+## 📝 API Documentation
+
+The backend provides the following endpoints:
+
+- `POST /search`: Initiate a new search query
+- `GET /threads`: Get all conversation threads
+- `GET /threads/{id}`: Get a specific thread
+- `DELETE /threads/{id}`: Delete a thread
+- `WS /ws/stream/{thread_id}/{message_id}`: WebSocket for streaming responses
+
+## 🚀 Deployment
+
+### Backend Deployment
+1. Deploy to your preferred platform (Render, Railway, Heroku)
+2. Set environment variables
+3. Ensure Redis is available
+
+### Frontend Deployment
+1. Deploy to Vercel or Netlify
+2. Set `NEXT_PUBLIC_API_URL` to your backend URL
+3. Build and deploy
 
 ## 🤝 Contributing
 
-We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Add tests if applicable
+5. Submit a pull request
 
-### Development Guidelines
-1. Follow TypeScript/Python best practices
-2. Write comprehensive tests
-3. Update documentation
-4. Follow conventional commit messages
-5. Ensure accessibility compliance
+## 📄 License
 
-## 📝 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License - see the LICENSE file for details.
 
 ## 🌟 Acknowledgments
 
-- **Perplexity** for inspiration
-- **Brave Search** for web search capabilities
-- **OpenAI** for AI-powered insights
-- **Vercel** for deployment platform
-
-## 🔗 Links
-
-- **Live Demo**: [Coming Soon]
-- **Documentation**: [API Docs](http://localhost:8000/docs)
-- **Issues**: [GitHub Issues](https://github.com/yourusername/researchhub/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/yourusername/researchhub/discussions)
-
----
-
-Built with ❤️ by the ResearchHub team
+- Inspired by Perplexity AI's excellent search interface
+- Built with modern web technologies for optimal performance
+- Forest theme designed for calm, focused research sessions

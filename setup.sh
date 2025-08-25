@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# ResearchHub Setup Script
-echo "🧠 Setting up ResearchHub..."
+echo "🌲 Setting up Forest Search - AI-Powered Research Assistant"
+echo "============================================================"
 
 # Check if Node.js is installed
 if ! command -v node &> /dev/null; then
@@ -11,13 +11,18 @@ fi
 
 # Check if Python is installed
 if ! command -v python3 &> /dev/null; then
-    echo "❌ Python is not installed. Please install Python 3.9+ first."
+    echo "❌ Python is not installed. Please install Python 3.8+ first."
     exit 1
 fi
 
-echo "✅ Prerequisites check passed"
+# Check if Redis is available
+if ! command -v redis-server &> /dev/null; then
+    echo "⚠️  Redis is not installed. Please install Redis for conversation storage."
+    echo "   On macOS: brew install redis"
+    echo "   On Ubuntu: sudo apt-get install redis-server"
+    echo "   Or use a cloud Redis service and update the REDIS_URL in .env"
+fi
 
-# Install frontend dependencies
 echo "📦 Installing frontend dependencies..."
 npm install
 
@@ -26,64 +31,50 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-# Set up backend
-echo "🐍 Setting up Python backend..."
+echo "📦 Installing backend dependencies..."
 cd backend
 
-# Create virtual environment
-python3 -m venv venv
+# Create virtual environment if it doesn't exist
+if [ ! -d "venv" ]; then
+    echo "🔧 Creating Python virtual environment..."
+    python3 -m venv venv
+fi
 
 # Activate virtual environment
 source venv/bin/activate
 
-# Install Python dependencies
+# Install requirements
 pip install -r requirements.txt
 
 if [ $? -ne 0 ]; then
-    echo "❌ Failed to install Python dependencies"
+    echo "❌ Failed to install backend dependencies"
     exit 1
-fi
-
-# Create .env file if it doesn't exist
-if [ ! -f .env ]; then
-    echo "📝 Creating environment file..."
-    cat > .env << EOL
-# Database
-DATABASE_URL=sqlite:///./researchhub.db
-REDIS_URL=redis://localhost:6379
-
-# API Keys (Add your keys here)
-OPENAI_API_KEY=your_openai_api_key_here
-BRAVE_API_KEY=your_brave_search_api_key_here
-EXA_API_KEY=your_exa_api_key_here
-
-# JWT
-JWT_SECRET_KEY=your_jwt_secret_key_here
-JWT_ALGORITHM=HS256
-JWT_EXPIRATION_HOURS=24
-
-# CORS
-ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
-
-# App Settings
-DEBUG=True
-LOG_LEVEL=INFO
-MAX_SEARCH_RESULTS=10
-MAX_TOKENS_PER_REQUEST=4000
-EOL
 fi
 
 cd ..
 
-echo "✅ Setup completed successfully!"
+# Copy environment files
+if [ ! -f ".env" ]; then
+    echo "📝 Creating frontend environment file..."
+    cp env.example .env
+fi
+
+if [ ! -f "backend/.env" ]; then
+    echo "📝 Creating backend environment file..."
+    cp backend/env.example backend/.env
+fi
+
+echo ""
+echo "✅ Setup complete!"
 echo ""
 echo "🚀 To start the application:"
-echo "   Frontend: npm run dev"
-echo "   Backend:  cd backend && source venv/bin/activate && python main.py"
+echo "   1. Start Redis: redis-server"
+echo "   2. Start backend: cd backend && source venv/bin/activate && python main.py"
+echo "   3. Start frontend: npm run dev"
+echo "   4. Open http://localhost:3000"
 echo ""
-echo "📝 Don't forget to:"
-echo "   1. Add your API keys to backend/.env"
-echo "   2. Set up PostgreSQL and Redis if needed"
-echo "   3. Visit http://localhost:3000 to use ResearchHub"
+echo "🔑 Don't forget to add your API keys to backend/.env:"
+echo "   - BRAVE_API_KEY or EXA_API_KEY for search"
+echo "   - OPENAI_API_KEY for AI responses"
 echo ""
-echo "📚 For more information, see README.md"
+echo "🌲 Happy researching with Forest Search!"

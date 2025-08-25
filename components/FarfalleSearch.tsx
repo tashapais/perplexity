@@ -21,6 +21,8 @@ export default function FarfalleSearch() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [streamingContent, setStreamingContent] = useState('');
+  const [showHistory, setShowHistory] = useState(false);
+  const [threads, setThreads] = useState<any[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
 
@@ -38,6 +40,12 @@ export default function FarfalleSearch() {
   useEffect(() => {
     scrollToBottom();
   }, [messages, streamingContent]);
+
+  useEffect(() => {
+    if (showHistory) {
+      loadThreads();
+    }
+  }, [showHistory]);
 
   const handleSearch = async (searchQuery?: string) => {
     const queryToSearch = searchQuery || query;
@@ -105,16 +113,52 @@ export default function FarfalleSearch() {
     handleSearch(suggestion);
   };
 
+  const handleNewChat = () => {
+    setMessages([]);
+    setStreamingContent('');
+    setQuery('');
+    if (wsRef.current) {
+      wsRef.current.close();
+    }
+  };
+
+  const loadThreads = async () => {
+    try {
+      const threadsData = await api.getThreads();
+      setThreads(threadsData);
+    } catch (error) {
+      console.error('Failed to load threads:', error);
+    }
+  };
+
+  const handleThreadSelect = async (threadId: string) => {
+    try {
+      const thread = await api.getThread(threadId);
+      setMessages(thread.messages);
+      setShowHistory(false);
+    } catch (error) {
+      console.error('Failed to load thread:', error);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#1e1e1e] text-white flex flex-col">
       {/* Header */}
       <header className="flex items-center justify-between p-4 border-b border-gray-800">
         <div className="flex items-center gap-2">
-          <div className="text-xl font-semibold">coolperplexity</div>
+          <button 
+            onClick={handleNewChat}
+            className="text-xl font-semibold hover:text-gray-300 transition-colors"
+          >
+            coolperplexity
+          </button>
         </div>
         
         <div className="flex items-center gap-2">
-          <button className="p-2 hover:bg-gray-800 rounded-lg transition-colors">
+          <button 
+            onClick={() => setShowHistory(!showHistory)}
+            className="p-2 hover:bg-gray-800 rounded-lg transition-colors"
+          >
             <History className="w-5 h-5" />
           </button>
           <span className="text-sm text-gray-400">History</span>
@@ -125,7 +169,39 @@ export default function FarfalleSearch() {
       </header>
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 flex">
+        {/* History Sidebar */}
+        {showHistory && (
+          <div className="w-80 bg-[#2a2a2a] border-r border-gray-700 flex flex-col">
+            <div className="p-4 border-b border-gray-700">
+              <h2 className="text-lg font-semibold text-white">Chat History</h2>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4">
+              {threads.length === 0 ? (
+                <p className="text-gray-400 text-center">No conversations yet</p>
+              ) : (
+                <div className="space-y-2">
+                  {threads.map((thread) => (
+                    <button
+                      key={thread.id}
+                      onClick={() => handleThreadSelect(thread.id)}
+                      className="w-full text-left p-3 bg-[#353535] hover:bg-[#404040] rounded-lg transition-colors"
+                    >
+                      <div className="font-medium text-white text-sm mb-1 line-clamp-1">
+                        {thread.title}
+                      </div>
+                      <div className="text-xs text-gray-400">
+                        {new Date(thread.updated_at).toLocaleDateString()}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        <div className="flex-1 flex flex-col">
         {messages.length === 0 ? (
           /* Welcome Screen */
           <div className="flex-1 flex flex-col items-center justify-center px-4">
@@ -285,6 +361,7 @@ export default function FarfalleSearch() {
             </div>
           </div>
         )}
+        </div>
       </div>
     </div>
   );

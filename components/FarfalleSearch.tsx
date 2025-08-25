@@ -110,7 +110,7 @@ export default function FarfalleSearch() {
       {/* Header */}
       <header className="flex items-center justify-between p-4 border-b border-gray-800">
         <div className="flex items-center gap-2">
-          <div className="text-xl font-semibold">farfalle</div>
+          <div className="text-xl font-semibold">coolperplexity</div>
         </div>
         
         <div className="flex items-center gap-2">

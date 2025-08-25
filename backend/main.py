@@ -76,7 +76,7 @@ async def search_endpoint(query: SearchQuery):
         return {
             "thread_id": thread_id,
             "message_id": assistant_message.id,
-            "sources": [result.dict() for result in search_results],
+            "sources": [result.model_dump() for result in search_results],
             "user_message_id": user_message.id
         }
         
@@ -162,7 +162,7 @@ async def get_threads():
     """Get all threads ordered by most recent activity"""
     try:
         threads = await storage_service.get_all_threads()
-        return [thread.dict() for thread in threads]
+        return [thread.model_dump() for thread in threads]
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get threads: {str(e)}")
 
@@ -173,7 +173,7 @@ async def get_thread(thread_id: str):
         thread = await storage_service.get_thread(thread_id)
         if not thread:
             raise HTTPException(status_code=404, detail="Thread not found")
-        return thread.dict()
+        return thread.model_dump()
     except HTTPException:
         raise
     except Exception as e:

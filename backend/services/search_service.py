@@ -60,8 +60,10 @@ class SearchService:
         }
         payload = {
             "query": query,
-            "numResults": count,
-            "includeText": True,
+            "numResults": min(count, 10),
+            "contents": {
+                "text": True
+            },
             "type": "neural"
         }
         
@@ -73,11 +75,12 @@ class SearchService:
                 
                 results = []
                 for item in data.get("results", []):
+                    text_content = item.get("text", "") or item.get("snippet", "") or ""
                     results.append(SearchResult(
                         title=item.get("title", ""),
                         url=item.get("url", ""),
-                        content=item.get("text", "")[:500] + "..." if len(item.get("text", "")) > 500 else item.get("text", ""),
-                        snippet=item.get("text", "")[:200] + "..." if len(item.get("text", "")) > 200 else item.get("text", "")
+                        content=text_content[:500] + "..." if len(text_content) > 500 else text_content,
+                        snippet=text_content[:200] + "..." if len(text_content) > 200 else text_content
                     ))
                 return results
             except Exception as e:

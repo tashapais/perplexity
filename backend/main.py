@@ -12,6 +12,7 @@ from models.schemas import SearchQuery, Thread, Message, StreamingResponse as St
 from services.search_service import SearchService
 from services.llm_service import LLMService
 from services.storage_service import StorageService
+from services.supermemory_service import SupermemoryService
 
 # Load environment variables
 load_dotenv()
@@ -31,6 +32,7 @@ app.add_middleware(
 search_service = SearchService()
 llm_service = LLMService()
 storage_service = StorageService()
+supermemory_service = SupermemoryService()
 
 @app.get("/")
 async def root():
@@ -61,8 +63,15 @@ async def search_endpoint(query: SearchQuery):
         )
         await storage_service.add_message_to_thread(thread_id, user_message)
         
-        # Perform search
-        search_results = await search_service.search(query.query)
+        # Get user ID (for now, using a default user - in production you'd get this from auth)
+        user_id = "default_user"
+        
+        # Perform both web search and personal memory search
+        web_results = await search_service.search(query.query)
+        personal_memories = await supermemory_service.search_memories(query.query, user_id, limit=3)
+        
+        # Combine results (personal memories first for more personalized responses)
+        all_results = personal_memories + web_results
         
         # Create assistant message
         assistant_message = Message(
@@ -70,14 +79,16 @@ async def search_endpoint(query: SearchQuery):
             content="",  # Will be filled by streaming
             role="assistant",
             timestamp=datetime.now(),
-            sources=search_results
+            sources=all_results
         )
         
         return {
             "thread_id": thread_id,
             "message_id": assistant_message.id,
-            "sources": [result.model_dump() for result in search_results],
-            "user_message_id": user_message.id
+            "sources": [result.model_dump() for result in all_results],
+            "user_message_id": user_message.id,
+            "personal_memories_count": len(personal_memories),
+            "web_results_count": len(web_results)
         }
         
     except Exception as e:
@@ -191,6 +202,37 @@ async def delete_thread(thread_id: str):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to delete thread: {str(e)}")
+
+# Supermemory endpoints
+@app.post("/supermemory/connect/notion")
+async def connect_notion(user_id: str = "default_user"):
+    """Create a Notion connection for the user"""
+    try:
+        redirect_url = "http://localhost:3000/supermemory/callback"
+        connection = await supermemory_service.create_notion_connection(redirect_url, user_id)
+        return connection
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create connection: {str(e)}")
+
+@app.get("/supermemory/connections")
+async def get_connections(user_id: str = "default_user"):
+    """Get user's Supermemory connections"""
+    try:
+        connections = await supermemory_service.get_connections(user_id)
+        return {"connections": connections}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get connections: {str(e)}")
+
+@app.post("/supermemory/connections/{connection_id}/sync")
+async def sync_connection(connection_id: str):
+    """Trigger sync for a connection"""
+    try:
+        success = await supermemory_service.sync_connection(connection_id)
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to sync connection")
+        return {"message": "Sync initiated successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to sync connection: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn

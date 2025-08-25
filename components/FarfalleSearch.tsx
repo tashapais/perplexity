@@ -1,11 +1,13 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Search, History, Sun, ArrowUp } from 'lucide-react';
+import { Search, History, Sun, ArrowUp, BookOpen } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { api } from '@/lib/api';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import NotionConnect from './NotionConnect';
+import SupermemoryDebug from './SupermemoryDebug';
 
 interface Message {
   id: string;
@@ -22,6 +24,7 @@ export default function FarfalleSearch() {
   const [isLoading, setIsLoading] = useState(false);
   const [streamingContent, setStreamingContent] = useState('');
   const [showHistory, setShowHistory] = useState(false);
+  const [showNotionConnect, setShowNotionConnect] = useState(false);
   const [threads, setThreads] = useState<any[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
@@ -162,7 +165,13 @@ export default function FarfalleSearch() {
             <History className="w-5 h-5" />
           </button>
           <span className="text-sm text-gray-400">History</span>
-          <button className="p-2 hover:bg-gray-800 rounded-lg transition-colors ml-4">
+          <button 
+            onClick={() => setShowNotionConnect(true)}
+            className="p-2 hover:bg-gray-800 rounded-lg transition-colors ml-4"
+          >
+            <BookOpen className="w-5 h-5" />
+          </button>
+          <button className="p-2 hover:bg-gray-800 rounded-lg transition-colors">
             <Sun className="w-5 h-5" />
           </button>
         </div>
@@ -363,6 +372,14 @@ export default function FarfalleSearch() {
         )}
         </div>
       </div>
+
+      {/* Notion Connect Modal */}
+      {showNotionConnect && (
+        <NotionConnect onClose={() => setShowNotionConnect(false)} />
+      )}
+
+      {/* Debug Panel */}
+      <SupermemoryDebug />
     </div>
   );
 }

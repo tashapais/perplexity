@@ -41,6 +41,12 @@ export default function HomePage() {
               <button className="text-gray-600 hover:text-gray-900 font-medium">
                 Collaborate
               </button>
+              <a 
+                href="/connectors"
+                className="text-gray-600 hover:text-gray-900 font-medium"
+              >
+                Connectors
+              </a>
               <button className="text-gray-600 hover:text-gray-900 font-medium">
                 History
               </button>

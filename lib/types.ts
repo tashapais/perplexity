@@ -160,3 +160,45 @@ export interface Citation {
   journal?: string
   citationStyle?: 'apa' | 'mla' | 'chicago'
 }
+
+// Supermemory Connector Types
+export interface ConnectorProvider {
+  id: 'google-drive' | 'notion' | 'onedrive'
+  name: string
+  description: string
+  icon: string
+  color: string
+}
+
+export interface ConnectorAuth {
+  auth_link: string
+  connection_id: string
+  provider: string
+  redirect_url: string
+}
+
+export interface Connection {
+  id: string
+  provider: string
+  status: 'connected' | 'error' | 'syncing'
+  lastSync?: string
+  documentsCount?: number
+  createdAt?: string
+}
+
+export interface SyncResult {
+  success: boolean
+  documentsSynced: number
+  errors: string[]
+  syncTime: string
+}
+
+export interface ConnectedDocument {
+  id: string
+  title: string
+  content: string
+  source: string
+  provider: string
+  lastModified: string
+  url?: string
+}

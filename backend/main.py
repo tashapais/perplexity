@@ -10,7 +10,18 @@ from typing import List, Optional, AsyncGenerator
 import httpx
 import json
 from datetime import datetime
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 from services.search import search_service, SearchResult as SearchResultModel
+from services.supermemory import (
+    create_supermemory_service, 
+    ConnectorProvider, 
+    ConnectorAuth, 
+    ConnectionStatus, 
+    SyncResult
+)
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -26,17 +37,38 @@ class Settings:
     ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
     MAX_SEARCH_RESULTS = int(os.getenv("MAX_SEARCH_RESULTS", "10"))
     MAX_TOKENS = int(os.getenv("MAX_TOKENS_PER_REQUEST", "4000"))
+    
+    # Supermemory Configuration
+    SUPERMEMORY_API_KEY = os.getenv("SUPERMEMORY_API_KEY", "")
+    SUPERMEMORY_BASE_URL = os.getenv("SUPERMEMORY_BASE_URL", "https://api.supermemory.ai")
+    SUPERMEMORY_REDIRECT_URL = os.getenv("SUPERMEMORY_REDIRECT_URL", "http://localhost:3000/connectors/callback")
 
 settings = Settings()
+
+# Debug: Print supermemory configuration (without exposing full key)
+logger.info(f"Supermemory API key configured: {'Yes' if settings.SUPERMEMORY_API_KEY else 'No'}")
+if settings.SUPERMEMORY_API_KEY:
+    logger.info(f"API key preview: {settings.SUPERMEMORY_API_KEY[:10]}...")
+
+# Initialize supermemory service
+supermemory_service = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
+    global supermemory_service
     logger.info("Starting ResearchHub API...")
+    supermemory_service = create_supermemory_service(
+        settings.SUPERMEMORY_API_KEY,
+        settings.SUPERMEMORY_BASE_URL,
+        settings.SUPERMEMORY_REDIRECT_URL
+    )
     yield
     # Shutdown
     logger.info("Shutting down ResearchHub API...")
     await search_service.close()
+    if supermemory_service:
+        await supermemory_service.close()
 
 # FastAPI app
 app = FastAPI(
@@ -90,6 +122,29 @@ class ResearchThread(BaseModel):
     messages: List[ThreadMessage]
     created_at: datetime
     updated_at: datetime
+
+# Supermemory Connector Models
+class ConnectorCreateRequest(BaseModel):
+    provider: str  # 'google-drive', 'notion', 'onedrive'
+    user_id: str
+
+class ConnectorAuthResponse(BaseModel):
+    auth_link: str
+    connection_id: str
+    provider: str
+    redirect_url: str
+
+class ConnectionListResponse(BaseModel):
+    connections: List[dict]
+
+class SyncRequest(BaseModel):
+    connection_id: str
+
+class SyncResponse(BaseModel):
+    success: bool
+    documents_synced: int
+    errors: List[str]
+    sync_time: str
 
 # Mock data for demonstration
 MOCK_SEARCH_RESULTS = [
@@ -352,6 +407,152 @@ async def get_experts():
             }
         ]
     }
+
+# Supermemory Connector Endpoints
+@app.post("/connectors/create", response_model=ConnectorAuthResponse)
+async def create_connector(request: ConnectorCreateRequest):
+    """
+    Create a new connector to Google Drive, Notion, or OneDrive
+    Returns an auth link for the user to authorize the connection
+    """
+    try:
+        if not supermemory_service:
+            raise HTTPException(status_code=503, detail="Supermemory service not available")
+        
+        # Validate provider
+        try:
+            provider = ConnectorProvider(request.provider)
+        except ValueError:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Invalid provider. Must be one of: {[p.value for p in ConnectorProvider]}"
+            )
+        
+        # Create connection
+        auth_result = await supermemory_service.create_connection(provider, request.user_id)
+        
+        return ConnectorAuthResponse(
+            auth_link=auth_result.auth_link,
+            connection_id=auth_result.connection_id,
+            provider=auth_result.provider.value,
+            redirect_url=settings.SUPERMEMORY_REDIRECT_URL
+        )
+        
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error creating connector: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to create connector")
+
+@app.get("/connectors/{user_id}", response_model=ConnectionListResponse)
+async def list_user_connections(user_id: str):
+    """List all connections for a user"""
+    try:
+        if not supermemory_service:
+            raise HTTPException(status_code=503, detail="Supermemory service not available")
+        
+        connections = await supermemory_service.list_connections(user_id)
+        
+        # Convert to dict format for JSON response
+        connections_data = []
+        for conn in connections:
+            connections_data.append({
+                "id": conn.id,
+                "provider": conn.provider.value,
+                "status": conn.status,
+                "last_sync": conn.last_sync,
+                "documents_count": conn.documents_count,
+                "created_at": conn.created_at
+            })
+        
+        return ConnectionListResponse(connections=connections_data)
+        
+    except Exception as e:
+        logger.error(f"Error listing connections: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to list connections")
+
+@app.delete("/connectors/{connection_id}")
+async def delete_connector(connection_id: str):
+    """Delete a connector connection"""
+    try:
+        if not supermemory_service:
+            raise HTTPException(status_code=503, detail="Supermemory service not available")
+        
+        success = await supermemory_service.delete_connection(connection_id)
+        
+        if success:
+            return {"message": "Connection deleted successfully"}
+        else:
+            raise HTTPException(status_code=404, detail="Connection not found or could not be deleted")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting connection: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to delete connection")
+
+@app.post("/connectors/{provider}/sync", response_model=SyncResponse)
+async def sync_connector(provider: str, request: SyncRequest):
+    """Manually sync a connector"""
+    try:
+        if not supermemory_service:
+            raise HTTPException(status_code=503, detail="Supermemory service not available")
+        
+        # Validate provider
+        try:
+            provider_enum = ConnectorProvider(provider)
+        except ValueError:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Invalid provider. Must be one of: {[p.value for p in ConnectorProvider]}"
+            )
+        
+        # Sync connection
+        sync_result = await supermemory_service.sync_connection(provider_enum, request.connection_id)
+        
+        return SyncResponse(
+            success=sync_result.success,
+            documents_synced=sync_result.documents_synced,
+            errors=sync_result.errors,
+            sync_time=sync_result.sync_time
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error syncing connector: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to sync connector")
+
+@app.get("/connectors/{user_id}/documents")
+async def get_synced_documents(user_id: str, provider: Optional[str] = None):
+    """Get documents synced from connectors"""
+    try:
+        if not supermemory_service:
+            raise HTTPException(status_code=503, detail="Supermemory service not available")
+        
+        provider_enum = None
+        if provider:
+            try:
+                provider_enum = ConnectorProvider(provider)
+            except ValueError:
+                raise HTTPException(
+                    status_code=400, 
+                    detail=f"Invalid provider. Must be one of: {[p.value for p in ConnectorProvider]}"
+                )
+        
+        documents = await supermemory_service.get_synced_documents(user_id, provider_enum)
+        
+        return {
+            "documents": documents,
+            "count": len(documents),
+            "provider_filter": provider
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting synced documents: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get synced documents")
 
 if __name__ == "__main__":
     import uvicorn

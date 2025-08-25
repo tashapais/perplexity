@@ -1,4 +1,4 @@
-import { SearchResult, ResearchResponse, ResearchThread, StreamingResponse } from './types'
+import { SearchResult, ResearchResponse, ResearchThread, StreamingResponse, ConnectorAuth, Connection, SyncResult, ConnectedDocument } from './types'
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
@@ -168,6 +168,45 @@ class ApiClient {
   async healthCheck(): Promise<{ status: string; timestamp: string }> {
     return this.request('/health')
   }
+
+  // Supermemory Connector methods
+  async createConnector(provider: string, userId: string): Promise<ConnectorAuth> {
+    return this.request<ConnectorAuth>('/connectors/create', {
+      method: 'POST',
+      body: JSON.stringify({
+        provider,
+        user_id: userId,
+      }),
+    })
+  }
+
+  async getUserConnections(userId: string): Promise<{ connections: Connection[] }> {
+    return this.request(`/connectors/${userId}`)
+  }
+
+  async deleteConnection(connectionId: string): Promise<{ message: string }> {
+    return this.request(`/connectors/${connectionId}`, {
+      method: 'DELETE',
+    })
+  }
+
+  async syncConnection(provider: string, connectionId: string): Promise<SyncResult> {
+    return this.request<SyncResult>(`/connectors/${provider}/sync`, {
+      method: 'POST',
+      body: JSON.stringify({
+        connection_id: connectionId,
+      }),
+    })
+  }
+
+  async getSyncedDocuments(userId: string, provider?: string): Promise<{
+    documents: ConnectedDocument[]
+    count: number
+    provider_filter?: string
+  }> {
+    const params = provider ? `?provider=${provider}` : ''
+    return this.request(`/connectors/${userId}/documents${params}`)
+  }
 }
 
 // Export singleton instance
@@ -189,6 +228,11 @@ export const {
   leaveCollaborationRoom,
   getActiveRooms,
   healthCheck,
+  createConnector,
+  getUserConnections,
+  deleteConnection,
+  syncConnection,
+  getSyncedDocuments,
 } = apiClient
 
 export default apiClient

@@ -1,0 +1,37 @@
+# Ignore frontend files during Railway deployment
+# Railway should only build the Python backend
+
+# Next.js frontend files
+.next/
+node_modules/
+package.json
+package-lock.json
+next.config.js
+tailwind.config.js
+postcss.config.js
+tsconfig.json
+
+# Frontend source files
+app/
+components/
+lib/
+hooks/
+utils/
+
+# Development and build files
+.env.local
+.env.development.local
+.env.production.local
+
+# Other frontend-specific files
+*.tsx
+*.ts
+!backend/**/*.py
+!main.py
+
+# Keep only backend and Python files
+!backend/
+!requirements.txt
+!Procfile
+!runtime.txt
+!main.py

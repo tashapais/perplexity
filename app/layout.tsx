@@ -5,8 +5,8 @@ import './globals.css'
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'Forest Search - AI-Powered Research Assistant',
-  description: 'An AI-powered search engine that provides comprehensive answers with sources',
+  title: 'CoolPerplexity',
+  description: 'AI-powered search with personal knowledge integration',
 }
 
 export default function RootLayout({

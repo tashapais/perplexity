@@ -6,8 +6,8 @@ import { cn } from '@/lib/utils';
 import { api } from '@/lib/api';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import NotionConnect from './NotionConnect';
-import SupermemoryDebug from './SupermemoryDebug';
+import NotionDirect from './NotionDirect';
+
 
 interface Message {
   id: string;
@@ -373,13 +373,12 @@ export default function FarfalleSearch() {
         </div>
       </div>
 
-      {/* Notion Connect Modal */}
+      {/* Notion Direct Integration Modal */}
       {showNotionConnect && (
-        <NotionConnect onClose={() => setShowNotionConnect(false)} />
+        <NotionDirect onClose={() => setShowNotionConnect(false)} />
       )}
 
-      {/* Debug Panel */}
-      <SupermemoryDebug />
+
     </div>
   );
 }

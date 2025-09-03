@@ -12,7 +12,8 @@ from models.schemas import SearchQuery, Thread, Message, StreamingResponse as St
 from services.search_service import SearchService
 from services.llm_service import LLMService
 from services.storage_service import StorageService
-from services.supermemory_service import SupermemoryService
+
+from services.notion_service import NotionService
 
 # Load environment variables
 load_dotenv()
@@ -52,7 +53,8 @@ app.add_middleware(
 search_service = SearchService()
 llm_service = LLMService()
 storage_service = StorageService()
-supermemory_service = SupermemoryService()
+
+notion_service = NotionService()
 
 @app.get("/")
 async def root():
@@ -86,12 +88,16 @@ async def search_endpoint(query: SearchQuery):
         # Get user ID (for now, using a default user - in production you'd get this from auth)
         user_id = "default_user"
         
-        # Perform both web search and personal memory search
-        web_results = await search_service.search(query.query)
-        personal_memories = await supermemory_service.search_memories(query.query, user_id, limit=3)
+        # Perform search including personal content (Notion) and web results
+        all_results = await search_service.search_with_personal_content(
+            query.query, 
+            count=10, 
+            notion_service=notion_service, 
+            storage_service=storage_service, 
+            user_id=user_id
+        )
         
-        # Combine results (personal memories first for more personalized responses)
-        all_results = personal_memories + web_results
+
         
         # Create assistant message
         assistant_message = Message(
@@ -102,12 +108,16 @@ async def search_endpoint(query: SearchQuery):
             sources=all_results
         )
         
+        # Count Notion vs web results
+        notion_results = [r for r in all_results if r.source == "notion"]
+        web_results = [r for r in all_results if r.source != "notion"]
+        
         return {
             "thread_id": thread_id,
             "message_id": assistant_message.id,
             "sources": [result.model_dump() for result in all_results],
             "user_message_id": user_message.id,
-            "personal_memories_count": len(personal_memories),
+            "notion_results_count": len(notion_results),
             "web_results_count": len(web_results)
         }
         
@@ -223,38 +233,141 @@ async def delete_thread(thread_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to delete thread: {str(e)}")
 
-# Supermemory endpoints
-@app.post("/supermemory/connect/notion")
-async def connect_notion(user_id: str = "default_user"):
-    """Create a Notion connection for the user"""
+# Direct Notion OAuth endpoints
+@app.post("/notion/connect")
+async def connect_notion_direct(user_id: str = "default_user"):
+    """Start direct Notion OAuth flow"""
     try:
-        # Use environment variable for frontend URL, fallback to localhost
+        # Check if credentials are configured
+        if not notion_service.client_id or not notion_service.client_secret:
+            raise HTTPException(
+                status_code=500, 
+                detail="Notion credentials not configured. Please set NOTION_CLIENT_ID and NOTION_CLIENT_SECRET"
+            )
+        
+        # Generate state for security
+        import uuid
+        state = str(uuid.uuid4())
+        
+        # Store state temporarily (you might want to use Redis for this)
+        # For now, we'll include user_id in the state
+        state_with_user = f"{state}:{user_id}"
+        
+        # Create redirect URI
         frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
-        redirect_url = f"{frontend_url}/supermemory/callback"
-        connection = await supermemory_service.create_notion_connection(redirect_url, user_id)
-        return connection
+        redirect_uri = f"{frontend_url}/notion/callback"
+        
+        # Generate OAuth URL
+        auth_url = notion_service.create_oauth_url(redirect_uri, state_with_user)
+        
+        return {
+            "authUrl": auth_url,
+            "redirectUri": redirect_uri,
+            "state": state_with_user
+        }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to create connection: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to start Notion OAuth: {str(e)}")
 
-@app.get("/supermemory/connections")
-async def get_connections(user_id: str = "default_user"):
-    """Get user's Supermemory connections"""
+@app.post("/notion/oauth/callback")
+async def notion_oauth_callback(code: str, state: str):
+    """Handle Notion OAuth callback"""
     try:
-        connections = await supermemory_service.get_connections(user_id)
-        return {"connections": connections}
+        if not code or not state:
+            raise HTTPException(status_code=400, detail="Missing code or state parameter")
+        
+        # Extract user_id from state
+        if ":" not in state:
+            raise HTTPException(status_code=400, detail="Invalid state parameter")
+        
+        state_parts = state.split(":", 1)
+        user_id = state_parts[1]
+        
+        # Create redirect URI
+        frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
+        redirect_uri = f"{frontend_url}/notion/callback"
+        
+        # Exchange code for token
+        token_data = await notion_service.exchange_code_for_token(code, redirect_uri)
+        
+        # Get user info
+        access_token = token_data.get("access_token")
+        if not access_token:
+            raise HTTPException(status_code=400, detail="No access token received")
+        
+        user_info = await notion_service.get_user_info(access_token)
+        
+        # Store token data
+        stored = await storage_service.store_notion_token(user_id, {
+            "access_token": access_token,
+            "token_type": token_data.get("token_type", "bearer"),
+            "workspace_name": token_data.get("workspace_name"),
+            "workspace_id": token_data.get("workspace_id"),
+            "user_info": user_info
+        })
+        
+        if not stored:
+            print("Warning: Could not store token in Redis, but OAuth completed successfully")
+        
+        return {
+            "success": True,
+            "workspace_name": token_data.get("workspace_name"),
+            "user_name": user_info.get("name", "Unknown"),
+            "message": "Notion connected successfully!"
+        }
+        
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get connections: {str(e)}")
+        print(f"Notion OAuth callback error: {e}")
+        print(f"DEBUG: code={code[:10] if code else 'None'}..., state={state}")
+        raise HTTPException(status_code=500, detail=f"Failed to complete Notion OAuth: {str(e)}")
 
-@app.post("/supermemory/connections/{connection_id}/sync")
-async def sync_connection(connection_id: str):
-    """Trigger sync for a connection"""
+@app.get("/notion/status")
+async def get_notion_status(user_id: str = "default_user"):
+    """Check if user has connected Notion"""
     try:
-        success = await supermemory_service.sync_connection(connection_id)
-        if not success:
-            raise HTTPException(status_code=500, detail="Failed to sync connection")
-        return {"message": "Sync initiated successfully"}
+        token_data = await storage_service.get_notion_token(user_id)
+        if token_data:
+            return {
+                "connected": True,
+                "workspace_name": token_data.get("workspace_name"),
+                "user_name": token_data.get("user_info", {}).get("name", "Unknown")
+            }
+        else:
+            return {"connected": False}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to sync connection: {str(e)}")
+        return {"connected": False, "error": str(e)}
+
+@app.delete("/notion/disconnect")
+async def disconnect_notion(user_id: str = "default_user"):
+    """Disconnect Notion integration"""
+    try:
+        await storage_service.delete_notion_token(user_id)
+        return {"success": True, "message": "Notion disconnected successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to disconnect Notion: {str(e)}")
+
+@app.post("/notion/search")
+async def search_notion(query: str, user_id: str = "default_user", limit: int = 5):
+    """Search user's Notion content"""
+    try:
+        token_data = await storage_service.get_notion_token(user_id)
+        if not token_data:
+            raise HTTPException(status_code=401, detail="Notion not connected")
+        
+        access_token = token_data.get("access_token")
+        if not access_token:
+            raise HTTPException(status_code=401, detail="Invalid Notion token")
+        
+        results = await notion_service.search_notion_content(access_token, query, limit)
+        return {"results": [result.dict() for result in results]}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to search Notion: {str(e)}")
+
+
+
+
 
 if __name__ == "__main__":
     import uvicorn

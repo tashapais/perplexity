@@ -1,6 +1,6 @@
 import httpx
 import os
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from models.schemas import SearchResult
 
 class SearchService:
@@ -40,7 +40,8 @@ class SearchService:
                         title=item.get("title", ""),
                         url=item.get("url", ""),
                         content=item.get("description", ""),
-                        snippet=item.get("description", "")
+                        snippet=item.get("description", ""),
+                        source="web"
                     ))
                 return results
             except Exception as e:
@@ -80,12 +81,39 @@ class SearchService:
                         title=item.get("title", ""),
                         url=item.get("url", ""),
                         content=text_content[:500] + "..." if len(text_content) > 500 else text_content,
-                        snippet=text_content[:200] + "..." if len(text_content) > 200 else text_content
+                        snippet=text_content[:200] + "..." if len(text_content) > 200 else text_content,
+                        source="web"
                     ))
                 return results
             except Exception as e:
                 print(f"Exa search error: {e}")
                 return []
+    
+    async def search_with_personal_content(self, query: str, count: int = 10, 
+                                          notion_service=None, storage_service=None, 
+                                          user_id: str = "default_user") -> List[SearchResult]:
+        """Search including personal content from Notion and other sources"""
+        all_results = []
+        
+        # Search personal Notion content first
+        if notion_service and storage_service:
+            try:
+                token_data = await storage_service.get_notion_token(user_id)
+                if token_data and token_data.get("access_token"):
+                    notion_results = await notion_service.search_notion_content(
+                        token_data["access_token"], query, min(3, count // 2)
+                    )
+                    for result in notion_results:
+                        result.source = "notion"  # Ensure source is set
+                    all_results.extend(notion_results)
+            except Exception as e:
+                print(f"Error searching Notion content: {e}")
+        
+        # Search web content
+        web_results = await self.search(query, count - len(all_results))
+        all_results.extend(web_results)
+        
+        return all_results[:count]
     
     async def search(self, query: str, count: int = 10) -> List[SearchResult]:
         """Search using available search APIs (fallback to Exa if Brave fails)"""

@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { CheckCircle, AlertCircle, Loader } from 'lucide-react';
 
-export default function SupermemoryCallback() {
+export default function NotionCallback() {
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
   const [message, setMessage] = useState('');
   const router = useRouter();
@@ -30,44 +30,41 @@ export default function SupermemoryCallback() {
           return;
         }
 
-        // Log the callback data for debugging
-        console.log('OAuth callback received:', { code, state, error });
-        console.log('Full URL search params:', window.location.search);
-        
-        // Show debugging info in the UI
-        setMessage(`Debug: Received callback with state=${state}, code=${code?.substring(0, 10)}...`);
+        console.log('Direct Notion OAuth callback received:', { code: code.substring(0, 10) + '...', state });
 
-        // Wait a moment then check if the connection was completed
-        setTimeout(async () => {
+        // Send the authorization code to our backend as query parameters
+        const response = await fetch(`http://localhost:8000/notion/oauth/callback?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`, {
+          method: 'POST',
+        });
+
+        if (response.ok) {
+          const result = await response.json();
+          console.log('Notion OAuth success:', result);
+          setStatus('success');
+          setMessage(`Successfully connected to ${result.workspace_name || 'your Notion workspace'}!`);
+
+          // Redirect back to main app after 3 seconds
+          setTimeout(() => {
+            router.push('/');
+          }, 3000);
+        } else {
+          let errorData;
           try {
-            const response = await fetch('http://localhost:8000/supermemory/connections');
-            if (response.ok) {
-              const data = await response.json();
-              if (data.connections && data.connections.length > 0) {
-                setStatus('success');
-                setMessage('Successfully connected your Notion workspace!');
-                
-                // Redirect back to main app after 2 seconds
-                setTimeout(() => {
-                  router.push('/');
-                }, 2000);
-              } else {
-                setStatus('error');
-                setMessage('Connection was not completed. Please try again.');
-              }
-            } else {
-              setStatus('error');
-              setMessage('Failed to verify connection status.');
-            }
-          } catch (error) {
-            console.error('Error checking connection status:', error);
-            setStatus('error');
-            setMessage('Failed to verify connection. Please check manually.');
+            errorData = await response.json();
+          } catch (e) {
+            errorData = { detail: `HTTP ${response.status}: ${response.statusText}` };
           }
-        }, 2000); // Wait 2 seconds for Supermemory to process the callback
+          console.error('OAuth callback failed:', {
+            status: response.status,
+            statusText: response.statusText,
+            errorData
+          });
+          setStatus('error');
+          setMessage(`Connection failed: ${errorData.detail || `HTTP ${response.status}: ${response.statusText}`}`);
+        }
 
       } catch (error) {
-        console.error('Callback error:', error);
+        console.error('Notion callback error:', error);
         setStatus('error');
         setMessage('An unexpected error occurred during connection');
       }

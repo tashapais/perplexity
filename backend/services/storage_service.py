@@ -162,3 +162,45 @@ class StorageService:
         except Exception as e:
             print(f"Error deleting thread {thread_id}: {e}")
             return False
+    
+    # Notion token management
+    async def store_notion_token(self, user_id: str, token_data: dict) -> bool:
+        """Store Notion OAuth token for a user"""
+        if not self.redis_available:
+            return False
+            
+        try:
+            key = f"notion_token:{user_id}"
+            self.redis_client.setex(key, 86400, json.dumps(token_data))  # 24 hours expiry
+            return True
+        except Exception as e:
+            print(f"Error storing Notion token for user {user_id}: {e}")
+            return False
+    
+    async def get_notion_token(self, user_id: str) -> Optional[dict]:
+        """Get Notion OAuth token for a user"""
+        if not self.redis_available:
+            return None
+            
+        try:
+            key = f"notion_token:{user_id}"
+            token_data = self.redis_client.get(key)
+            if token_data:
+                return json.loads(token_data)
+            return None
+        except Exception as e:
+            print(f"Error getting Notion token for user {user_id}: {e}")
+            return None
+    
+    async def delete_notion_token(self, user_id: str) -> bool:
+        """Delete Notion OAuth token for a user"""
+        if not self.redis_available:
+            return True
+            
+        try:
+            key = f"notion_token:{user_id}"
+            self.redis_client.delete(key)
+            return True
+        except Exception as e:
+            print(f"Error deleting Notion token for user {user_id}: {e}")
+            return False

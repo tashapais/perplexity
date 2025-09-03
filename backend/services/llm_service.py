@@ -12,28 +12,28 @@ class LLMService:
         """Create a context-aware prompt with search results"""
         context = "You are answering a user's question using both their personal knowledge base and web search results.\n\n"
         
-        # Separate personal memories from web results
-        personal_memories = []
+        # Separate Notion content from web results
+        notion_results = []
         web_results = []
         
         for result in search_results:
-            if result.title == "Personal Note" or result.url == "#":
-                personal_memories.append(result)
+            if result.source == "notion":
+                notion_results.append(result)
             else:
                 web_results.append(result)
         
-        # Add personal memories first
-        if personal_memories:
-            context += "PERSONAL KNOWLEDGE BASE:\n"
-            for i, result in enumerate(personal_memories, 1):
-                context += f"Personal Note {i}: {result.content}\n\n"
+        # Add Notion content first (personal knowledge)
+        if notion_results:
+            context += "YOUR PERSONAL NOTION CONTENT:\n"
+            for i, result in enumerate(notion_results, 1):
+                context += f"Notion Page {i}: {result.title}\nContent: {result.content or result.snippet}\n\n"
         
         # Add web results
         if web_results:
             context += "WEB SEARCH RESULTS:\n"
-            start_num = len(personal_memories) + 1
+            start_num = len(notion_results) + 1
             for i, result in enumerate(web_results, start_num):
-                context += f"Source {i}: {result.title}\nURL: {result.url}\nContent: {result.content}\n\n"
+                context += f"Source {i}: {result.title}\nURL: {result.url}\nContent: {result.content or result.snippet}\n\n"
         
         context += f"User Question: {query}\n\n"
         context += """Please provide a personalized, comprehensive answer based on the information above. 

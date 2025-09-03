@@ -11,6 +11,7 @@ class SearchResult(BaseModel):
     url: str
     content: str
     snippet: str
+    source: str = "web"  # Default to "web", can be "notion" for personal content
 
 class Message(BaseModel):
     id: str

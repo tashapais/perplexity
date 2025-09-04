@@ -12,6 +12,8 @@ class SearchResult(BaseModel):
     content: str
     snippet: str
     source: str = "web"  # Default to "web", can be "notion" for personal content
+    image_url: Optional[str] = None  # Optional image URL for visual results
+    favicon_url: Optional[str] = None  # Optional favicon URL
 
 class Message(BaseModel):
     id: str

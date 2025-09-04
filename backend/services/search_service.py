@@ -36,12 +36,22 @@ class SearchService:
                 
                 results = []
                 for item in data.get("web", {}).get("results", []):
+                    # Extract image URL if available
+                    image_url = None
+                    if "thumbnail" in item and item["thumbnail"] and "src" in item["thumbnail"]:
+                        image_url = item["thumbnail"]["src"]
+                    
+                    # Extract favicon
+                    favicon_url = item.get("profile", {}).get("img") if "profile" in item else None
+                    
                     results.append(SearchResult(
                         title=item.get("title", ""),
                         url=item.get("url", ""),
                         content=item.get("description", ""),
                         snippet=item.get("description", ""),
-                        source="web"
+                        source="web",
+                        image_url=image_url,
+                        favicon_url=favicon_url
                     ))
                 return results
             except Exception as e:
@@ -77,12 +87,23 @@ class SearchService:
                 results = []
                 for item in data.get("results", []):
                     text_content = item.get("text", "") or item.get("snippet", "") or ""
+                    
+                    # Extract favicon from URL domain
+                    url = item.get("url", "")
+                    favicon_url = None
+                    if url:
+                        from urllib.parse import urlparse
+                        domain = urlparse(url).netloc
+                        favicon_url = f"https://{domain}/favicon.ico"
+                    
                     results.append(SearchResult(
                         title=item.get("title", ""),
-                        url=item.get("url", ""),
+                        url=url,
                         content=text_content[:500] + "..." if len(text_content) > 500 else text_content,
                         snippet=text_content[:200] + "..." if len(text_content) > 200 else text_content,
-                        source="web"
+                        source="web",
+                        image_url=None,  # Exa doesn't typically return images
+                        favicon_url=favicon_url
                     ))
                 return results
             except Exception as e:
@@ -91,41 +112,80 @@ class SearchService:
     
     async def search_with_personal_content(self, query: str, count: int = 10, 
                                           notion_service=None, storage_service=None, 
-                                          user_id: str = "default_user") -> List[SearchResult]:
-        """Search including personal content from Notion and other sources"""
-        all_results = []
+                                          user_id: str = "default_user") -> Dict[str, Any]:
+        """Proactive personalized search: analyze Notion content first, then search strategically"""
         
-        # Search personal Notion content first with detailed debugging
+        # Step 1: Get user's personal knowledge from Notion
+        notion_results = []
         if notion_service and storage_service:
             try:
                 token_data = await storage_service.get_notion_token(user_id)
                 if token_data and token_data.get("access_token"):
-                    print(f"DEBUG: Searching Notion with token for query: '{query}'")
-                    notion_results = await notion_service.search_notion_content(
-                        token_data["access_token"], query, min(5, count // 2)
-                    )
-                    print(f"DEBUG: Found {len(notion_results)} Notion results")
-                    for result in notion_results:
-                        result.source = "notion"  # Ensure source is set
-                        print(f"DEBUG: Notion result - Title: {result.title}, Content: {result.content[:100]}...")
-                    all_results.extend(notion_results)
-                else:
-                    print("DEBUG: No valid Notion token found")
+                    print(f"DEBUG: Getting ALL user's Notion content for analysis")
+                    # Get ALL accessible pages for analysis, not just query matches
+                    all_pages = await notion_service.get_all_accessible_pages(token_data["access_token"], limit=20)
+                    
+                    # Convert pages to SearchResult format for analysis
+                    for page in all_pages:
+                        try:
+                            page_id = page["id"]
+                            page_title = notion_service.get_page_title(page)
+                            content_data = await notion_service.get_page_content(token_data["access_token"], page_id)
+                            content_text = notion_service.extract_text_from_blocks(content_data.get("results", []))
+                            
+                            result = SearchResult(
+                                title=f"📄 {page_title.strip()}",
+                                url=page.get("url", f"https://notion.so/{page_id}"),
+                                content=content_text if content_text.strip() else f"Content from Notion page: {page_title}",
+                                snippet=content_text[:200] if content_text.strip() else f"Your personal Notion page: {page_title}",
+                                source="notion"
+                            )
+                            notion_results.append(result)
+                        except Exception as e:
+                            print(f"Error processing page {page.get('id')}: {e}")
+                            continue
+                    
+                    print(f"DEBUG: Loaded {len(notion_results)} Notion pages for personalization")
             except Exception as e:
-                print(f"Error searching Notion content: {e}")
+                print(f"Error getting Notion content: {e}")
         
-        # Prioritize Notion results - limit web results if we have Notion content
-        web_limit = max(3, count - len(all_results)) if all_results else count
-        web_results = await self.search(query, web_limit)
-        all_results.extend(web_results)
+        # Step 2: Use personalization service to create search strategy
+        from .personalization_service import PersonalizationService
+        personalization_service = PersonalizationService()
         
-        # Always prioritize Notion results at the top
-        notion_results = [r for r in all_results if r.source == "notion"]
-        web_results = [r for r in all_results if r.source != "notion"]
+        search_strategy = await personalization_service.create_personalized_search_strategy(
+            query, notion_results
+        )
         
-        # Return Notion results first, then web results
-        prioritized_results = notion_results + web_results
-        return prioritized_results[:count]
+        # Step 3: Execute personalized searches
+        all_web_results = []
+        personalized_queries = search_strategy.get("personalized_queries", [query])
+        
+        print(f"DEBUG: Executing {len(personalized_queries)} personalized searches")
+        for pq in personalized_queries:
+            print(f"DEBUG: Searching for: '{pq}'")
+            results = await self.search(pq, max(2, count // len(personalized_queries)))
+            all_web_results.extend(results)
+        
+        # Step 4: Filter Notion results based on relevance to the original query
+        relevant_notion_results = []
+        query_lower = query.lower()
+        for notion_result in notion_results:
+            full_text = f"{notion_result.title} {notion_result.content}".lower()
+            if any(word in full_text for word in query_lower.split()) or len(query_lower) > 20:
+                relevant_notion_results.append(notion_result)
+        
+        print(f"DEBUG: Found {len(relevant_notion_results)} relevant Notion results")
+        
+        # Step 5: Combine and prioritize results
+        final_results = relevant_notion_results + all_web_results[:count-len(relevant_notion_results)]
+        
+        return {
+            "results": final_results[:count],
+            "search_strategy": search_strategy,
+            "notion_results_count": len(relevant_notion_results),
+            "web_results_count": len(all_web_results)
+        }
     
     async def search(self, query: str, count: int = 10) -> List[SearchResult]:
         """Search using available search APIs (fallback to Exa if Brave fails)"""

@@ -7,6 +7,7 @@ import { api } from '@/lib/api';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import NotionDirect from './NotionDirect';
+import EnhancedMessageDisplay from './EnhancedMessageDisplay';
 
 
 interface Message {
@@ -15,6 +16,7 @@ interface Message {
   role: 'user' | 'assistant';
   timestamp: string;
   sources?: any[];
+  sourceGroups?: any; // Enhanced grouped sources
 }
 
 export default function FarfalleSearch() {
@@ -78,7 +80,8 @@ export default function FarfalleSearch() {
         content: '',
         role: 'assistant',
         timestamp: new Date().toISOString(),
-        sources: searchResponse.sources
+        sources: searchResponse.sources,
+        sourceGroups: searchResponse.source_groups
       };
 
       // Set up WebSocket for streaming
@@ -91,7 +94,8 @@ export default function FarfalleSearch() {
         if (data.finished) {
           setMessages(prev => [...prev, {
             ...assistantMessage,
-            content: data.full_content || streamingContent
+            content: data.full_content || streamingContent,
+            sourceGroups: searchResponse.source_groups
           }]);
           setStreamingContent('');
           setIsLoading(false);
@@ -285,60 +289,30 @@ export default function FarfalleSearch() {
           /* Chat Interface */
           <div className="flex-1 overflow-auto p-4">
             <div className="max-w-4xl mx-auto space-y-6">
-              {messages.map((message) => (
-                <div key={message.id} className="space-y-4">
-                  {message.role === 'user' ? (
-                    <div className="flex justify-end">
-                      <div className="bg-primary-500 text-white px-4 py-2 rounded-lg max-w-3xl">
-                        {message.content}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="space-y-4">
-                      <div className="prose prose-invert max-w-none">
-                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                          {message.content}
-                        </ReactMarkdown>
-                      </div>
-                      
-                      {message.sources && message.sources.length > 0 && (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          {message.sources.slice(0, 4).map((source, index) => (
-                            <a
-                              key={index}
-                              href={source.url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="block p-3 bg-[#2a2a2a] hover:bg-[#353535] rounded-lg transition-colors"
-                            >
-                              <div className="font-medium text-sm mb-1 text-white line-clamp-2">
-                                {source.title}
-                              </div>
-                              <div className="text-xs text-gray-400 line-clamp-2">
-                                {source.snippet}
-                              </div>
-                              <div className="text-xs text-gray-500 mt-1">
-                                {new URL(source.url).hostname}
-                              </div>
-                            </a>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
+              {messages.map((message, index) => (
+                <EnhancedMessageDisplay
+                  key={message.id}
+                  message={message}
+                  sourceGroups={message.sourceGroups}
+                  previousUserMessage={index > 0 ? messages[index - 1]?.content : undefined}
+                  onFollowUpQuestion={(question) => {
+                    setQuery(question);
+                    handleSearch(question);
+                  }}
+                />
               ))}
               
               {/* Streaming Message */}
               {streamingContent && (
-                <div className="space-y-4">
-                  <div className="prose prose-invert max-w-none">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                      {streamingContent}
-                    </ReactMarkdown>
-                    <span className="inline-block w-2 h-5 bg-primary-500 animate-pulse ml-1" />
-                  </div>
-                </div>
+                <EnhancedMessageDisplay
+                  message={{
+                    id: 'streaming',
+                    content: streamingContent,
+                    role: 'assistant',
+                    timestamp: new Date().toISOString()
+                  }}
+                  isStreaming={true}
+                />
               )}
               
               <div ref={messagesEndRef} />

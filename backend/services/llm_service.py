@@ -10,8 +10,6 @@ class LLMService:
         
     def create_context_prompt(self, query: str, search_results: List[SearchResult]) -> str:
         """Create a context-aware prompt with search results"""
-        context = "You are answering a user's question using both their personal knowledge base and web search results.\n\n"
-        
         # Separate Notion content from web results
         notion_results = []
         web_results = []
@@ -22,37 +20,88 @@ class LLMService:
             else:
                 web_results.append(result)
         
-        # Add Notion content first (personal knowledge)
+        context = "You are a personalized research assistant with access to the user's personal knowledge base.\n\n"
+        
+        # Create detailed source mapping for hyperlinks
+        source_mapping = {}
+        source_counter = 1
+        
+        # Add user's personal context first
         if notion_results:
-            context += "YOUR PERSONAL NOTION CONTENT:\n"
-            for i, result in enumerate(notion_results, 1):
-                context += f"Notion Page {i}: {result.title}\nContent: {result.content or result.snippet}\n\n"
+            context += "🧠 PERSONAL NOTION PAGES:\n"
+            for result in notion_results:
+                source_mapping[source_counter] = {
+                    "url": result.url,
+                    "title": result.title,
+                    "type": "notion",
+                    "image_url": result.image_url
+                }
+                context += f"[{source_counter}] {result.title}\n{result.content or result.snippet}\nURL: {result.url}\n"
+                if result.image_url:
+                    context += f"Image: {result.image_url}\n"
+                context += "\n"
+                source_counter += 1
         
-        # Add web results
+        # Add web results with context
         if web_results:
-            context += "WEB SEARCH RESULTS:\n"
-            start_num = len(notion_results) + 1
-            for i, result in enumerate(web_results, start_num):
-                context += f"Source {i}: {result.title}\nURL: {result.url}\nContent: {result.content or result.snippet}\n\n"
+            context += "🌐 WEB SEARCH RESULTS:\n"
+            for result in web_results:
+                source_mapping[source_counter] = {
+                    "url": result.url,
+                    "title": result.title,
+                    "type": "web",
+                    "image_url": result.image_url,
+                    "favicon_url": result.favicon_url
+                }
+                context += f"[{source_counter}] {result.title}\n{result.content or result.snippet}\nURL: {result.url}\n"
+                if result.image_url:
+                    context += f"Image: {result.image_url}\n"
+                context += "\n"
+                source_counter += 1
         
-        context += f"User Question: {query}\n\n"
-        context += """Please provide a personalized, comprehensive answer based on the information above. 
-        Prioritize information from the user's personal knowledge base when relevant.
-        Include relevant citations using [1], [2], etc. format referencing the source numbers.
-        If you're drawing from personal notes, mention that you're referencing their personal knowledge.
-        If combining personal and web information, clearly distinguish between them."""
+        context += f"💭 USER'S QUESTION: {query}\n\n"
         
-        return context
+        if notion_results:
+            # Extract user's main interests for personalized opening
+            user_topics = []
+            for result in notion_results:
+                topic = result.title.replace('📄 ', '').strip()
+                user_topics.append(topic)
+            
+            context += f"""📝 PERSONALIZED RESPONSE INSTRUCTIONS:
+**MANDATORY OPENING**: Start your response with this exact format:
+"Based on your Notion page about {', '.join(user_topics)}, I searched specifically for [relevant keywords/areas] and [related terms]. Here are the latest developments in your area of interest..."
+
+**FORMATTING REQUIREMENTS**:
+1. **Hyperlinked Citations**: Use this format: [[1]](URL) where URL is the actual source URL
+2. **Inline Images**: When relevant, include images using: ![alt text](image_url)
+3. **Section Organization**: Organize content clearly with headers
+
+**CONTENT REQUIREMENTS**:
+1. **Connect search results** to their personal knowledge and interests
+2. **Reference their Notion content** when making connections  
+3. **Provide personalized insights** based on their documented interests
+4. **Include relevant images** inline when they enhance understanding
+5. **Make all citations clickable links** to source URLs
+
+**EXAMPLE CITATION**: Instead of [1], use [[1]](https://example.com) 
+**EXAMPLE IMAGE**: ![Research findings](https://example.com/image.jpg)
+"""
+        else:
+            context += """📝 RESPONSE INSTRUCTIONS:
+Provide a comprehensive answer based on the search results above. Use citations [1], [2], etc."""
+        
+        return context, source_mapping
     
     async def generate_response(self, query: str, search_results: List[SearchResult]) -> AsyncGenerator[str, None]:
         """Generate streaming response using OpenAI GPT"""
         try:
-            prompt = self.create_context_prompt(query, search_results)
+            prompt, source_mapping = self.create_context_prompt(query, search_results)
             
             stream = await self.client.chat.completions.create(
                 model="gpt-4",
                 messages=[
-                    {"role": "system", "content": "You are a helpful research assistant that provides accurate, well-sourced answers based on search results."},
+                    {"role": "system", "content": "You are a personalized AI research assistant. You have access to the user's personal knowledge base (Notion pages) and can provide contextual, personalized responses that connect their interests with current information. Always acknowledge their existing knowledge and interests when relevant."},
                     {"role": "user", "content": prompt}
                 ],
                 stream=True,

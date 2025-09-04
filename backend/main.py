@@ -88,8 +88,8 @@ async def search_endpoint(query: SearchQuery):
         # Get user ID (for now, using a default user - in production you'd get this from auth)
         user_id = "default_user"
         
-        # Perform search including personal content (Notion) and web results
-        all_results = await search_service.search_with_personal_content(
+        # Perform personalized search: analyze Notion content first, then search strategically
+        search_response = await search_service.search_with_personal_content(
             query.query, 
             count=10, 
             notion_service=notion_service, 
@@ -97,7 +97,11 @@ async def search_endpoint(query: SearchQuery):
             user_id=user_id
         )
         
-
+        all_results = search_response["results"]
+        search_strategy = search_response.get("search_strategy", {})
+        
+        print(f"DEBUG: Personalized search strategy: {search_strategy.get('personal_analysis', {})}")
+        print(f"DEBUG: Generated queries: {search_strategy.get('personalized_queries', [])}")
         
         # Create assistant message
         assistant_message = Message(
@@ -116,13 +120,71 @@ async def search_endpoint(query: SearchQuery):
             "thread_id": thread_id,
             "message_id": assistant_message.id,
             "sources": [result.model_dump() for result in all_results],
+            "source_groups": {
+                "notion": {
+                    "title": "📄 Your Personal Knowledge",
+                    "description": "From your Notion pages",
+                    "results": [result.model_dump() for result in notion_results],
+                    "count": len(notion_results)
+                },
+                "web": {
+                    "title": "🌐 Web Research",
+                    "description": "Personalized search results",
+                    "results": [result.model_dump() for result in web_results],
+                    "count": len(web_results)
+                }
+            },
             "user_message_id": user_message.id,
             "notion_results_count": len(notion_results),
-            "web_results_count": len(web_results)
+            "web_results_count": len(web_results),
+            "search_strategy": search_strategy.get("personal_analysis", {}),
+            "personalized_queries": search_strategy.get("personalized_queries", [])
         }
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
+
+@app.get("/search/test")
+async def test_search_structure(query: str = "AI research updates"):
+    """Test endpoint to see the new search structure"""
+    try:
+        user_id = "default_user"
+        
+        search_response = await search_service.search_with_personal_content(
+            query, 
+            count=6, 
+            notion_service=notion_service, 
+            storage_service=storage_service, 
+            user_id=user_id
+        )
+        
+        all_results = search_response["results"]
+        search_strategy = search_response.get("search_strategy", {})
+        
+        notion_results = [r for r in all_results if r.source == "notion"]
+        web_results = [r for r in all_results if r.source != "notion"]
+        
+        return {
+            "source_groups": {
+                "notion": {
+                    "title": "📄 Your Personal Knowledge",
+                    "description": "From your Notion pages",
+                    "results": [result.model_dump() for result in notion_results],
+                    "count": len(notion_results)
+                },
+                "web": {
+                    "title": "🌐 Web Research", 
+                    "description": "Personalized search results",
+                    "results": [result.model_dump() for result in web_results],
+                    "count": len(web_results)
+                }
+            },
+            "search_strategy": search_strategy.get("personal_analysis", {}),
+            "personalized_queries": search_strategy.get("personalized_queries", [])
+        }
+        
+    except Exception as e:
+        return {"error": str(e)}
 
 @app.websocket("/ws/stream/{thread_id}/{message_id}")
 async def websocket_stream(websocket: WebSocket, thread_id: str, message_id: str):

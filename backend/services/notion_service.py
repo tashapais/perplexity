@@ -87,6 +87,63 @@ class NotionService:
                 print(f"Failed to get user info: {e}")
                 raise e
     
+    async def get_all_accessible_pages(self, access_token: str, limit: int = 10) -> List[Dict[str, Any]]:
+        """Get all pages accessible to the integration (no query filter)"""
+        url = f"{self.base_url}/search"
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Notion-Version": "2022-06-28",
+            "Content-Type": "application/json"
+        }
+        
+        payload = {
+            "filter": {
+                "value": "page",
+                "property": "object"
+            },
+            "page_size": limit
+        }
+        
+        async with httpx.AsyncClient() as client:
+            try:
+                print(f"DEBUG: Getting all accessible pages")
+                response = await client.post(url, headers=headers, json=payload, timeout=10.0)
+                print(f"DEBUG: All pages response status: {response.status_code}")
+                
+                if response.status_code != 200:
+                    error_text = await response.aread()
+                    print(f"DEBUG: Error getting pages: {error_text}")
+                
+                response.raise_for_status()
+                data = response.json()
+                return data.get("results", [])
+            except Exception as e:
+                print(f"Failed to get accessible pages: {e}")
+                return []
+
+    def get_page_title(self, page: Dict[str, Any]) -> str:
+        """Extract title from a Notion page object"""
+        try:
+            properties = page.get("properties", {})
+            
+            # Look for title in different possible locations
+            for prop_name, prop_data in properties.items():
+                if prop_data.get("type") == "title":
+                    title_list = prop_data.get("title", [])
+                    if title_list:
+                        return "".join([t.get("plain_text", "") for t in title_list])
+            
+            # Fallback: check if it's in the page object directly
+            if "title" in page:
+                return page["title"]
+                
+            # Last resort: use page ID
+            return f"Untitled Page ({page.get('id', 'Unknown')})"
+            
+        except Exception as e:
+            print(f"Error extracting title: {e}")
+            return "Unknown Title"
+
     async def search_pages(self, access_token: str, query: str, limit: int = 10) -> List[Dict[str, Any]]:
         """Search pages in user's Notion workspace"""
         url = f"{self.base_url}/search"
@@ -173,39 +230,48 @@ class NotionService:
                 title = self.get_page_title(page)
                 print(f"DEBUG: Page {i+1}: '{title}' (ID: {page.get('id', 'Unknown')})")
             
-            # Now search with the query
-            pages = await self.search_pages(access_token, query, limit)
-            print(f"DEBUG: Query '{query}' returned {len(pages)} pages")
+            # Notion's search API is limited, so let's do our own filtering
+            # Get page content for each accessible page and search within it
             results = []
+            query_lower = query.lower()
             
-            for page in pages:
-                # Get page content
-                page_id = page["id"]
-                content_data = await self.get_page_content(access_token, page_id)
-                content_text = self.extract_text_from_blocks(content_data.get("results", []))
-                
-                # Extract page title
-                title = "Untitled"
-                if "properties" in page and "title" in page["properties"]:
-                    title_prop = page["properties"]["title"]
-                    if "title" in title_prop and title_prop["title"]:
-                        title = title_prop["title"][0]["text"]["content"]
-                elif "properties" in page:
-                    # Look for any property that might contain the title
-                    for prop_name, prop_data in page["properties"].items():
-                        if prop_data.get("type") == "title" and prop_data.get("title"):
-                            title = prop_data["title"][0]["text"]["content"]
-                            break
-                
-                # Create SearchResult
-                result = SearchResult(
-                    title=title,
-                    url=page.get("url", f"https://notion.so/{page_id}"),
-                    snippet=content_text[:200] + "..." if len(content_text) > 200 else content_text,
-                    source="notion"
-                )
-                results.append(result)
+            for page in all_pages[:limit]:  # Limit to avoid too many API calls
+                try:
+                    page_id = page["id"]
+                    page_title = self.get_page_title(page)
+                    
+                    # Get page content
+                    content_data = await self.get_page_content(access_token, page_id)
+                    content_text = self.extract_text_from_blocks(content_data.get("results", []))
+                    
+                    # Check if query matches title or content
+                    full_text = f"{page_title} {content_text}".lower()
+                    if query_lower in full_text:
+                        print(f"DEBUG: Found match in page '{page_title}' - query '{query}' found in content")
+                        print(f"DEBUG: Content preview: {content_text[:100]}...")
+                        
+                        # Ensure content is not empty
+                        final_content = content_text if content_text.strip() else f"Content from Notion page: {page_title}"
+                        final_snippet = content_text[:200] if content_text.strip() else f"Your personal Notion page: {page_title}"
+                        
+                        # Create search result
+                        result = SearchResult(
+                            title=f"📄 {page_title.strip()}",
+                            url=page.get("url", f"https://notion.so/{page_id}"),
+                            content=final_content[:500] + "..." if len(final_content) > 500 else final_content,
+                            snippet=f"From your personal Notion page: {final_snippet}",
+                            source="notion"
+                        )
+                        results.append(result)
+                        print(f"DEBUG: Added Notion result: {result.title}")
+                    else:
+                        print(f"DEBUG: No match in page '{page_title}' for query '{query}'")
+                        
+                except Exception as e:
+                    print(f"DEBUG: Error processing page {page.get('id')}: {e}")
+                    continue
             
+            print(f"DEBUG: Returning {len(results)} Notion results for query '{query}'")
             return results
             
         except Exception as e:

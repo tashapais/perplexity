@@ -365,6 +365,36 @@ async def search_notion(query: str, user_id: str = "default_user", limit: int = 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to search Notion: {str(e)}")
 
+@app.get("/notion/debug/pages")
+async def debug_notion_pages(user_id: str = "default_user"):
+    """Debug endpoint to see what pages the integration can access"""
+    try:
+        token_data = await storage_service.get_notion_token(user_id)
+        if not token_data:
+            raise HTTPException(status_code=404, detail="No Notion connection found")
+        
+        # Get all accessible pages
+        all_pages = await notion_service.get_all_accessible_pages(token_data["access_token"], limit=20)
+        
+        debug_info = {
+            "total_pages": len(all_pages),
+            "pages": []
+        }
+        
+        for page in all_pages:
+            page_info = {
+                "id": page.get("id"),
+                "title": notion_service.get_page_title(page),
+                "created_time": page.get("created_time"),
+                "last_edited_time": page.get("last_edited_time"),
+                "url": page.get("url"),
+                "properties_keys": list(page.get("properties", {}).keys()) if page.get("properties") else []
+            }
+            debug_info["pages"].append(page_info)
+        
+        return debug_info
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Debug failed: {str(e)}")
 
 
 

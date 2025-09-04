@@ -95,25 +95,37 @@ class SearchService:
         """Search including personal content from Notion and other sources"""
         all_results = []
         
-        # Search personal Notion content first
+        # Search personal Notion content first with detailed debugging
         if notion_service and storage_service:
             try:
                 token_data = await storage_service.get_notion_token(user_id)
                 if token_data and token_data.get("access_token"):
+                    print(f"DEBUG: Searching Notion with token for query: '{query}'")
                     notion_results = await notion_service.search_notion_content(
-                        token_data["access_token"], query, min(3, count // 2)
+                        token_data["access_token"], query, min(5, count // 2)
                     )
+                    print(f"DEBUG: Found {len(notion_results)} Notion results")
                     for result in notion_results:
                         result.source = "notion"  # Ensure source is set
+                        print(f"DEBUG: Notion result - Title: {result.title}, Content: {result.content[:100]}...")
                     all_results.extend(notion_results)
+                else:
+                    print("DEBUG: No valid Notion token found")
             except Exception as e:
                 print(f"Error searching Notion content: {e}")
         
-        # Search web content
-        web_results = await self.search(query, count - len(all_results))
+        # Prioritize Notion results - limit web results if we have Notion content
+        web_limit = max(3, count - len(all_results)) if all_results else count
+        web_results = await self.search(query, web_limit)
         all_results.extend(web_results)
         
-        return all_results[:count]
+        # Always prioritize Notion results at the top
+        notion_results = [r for r in all_results if r.source == "notion"]
+        web_results = [r for r in all_results if r.source != "notion"]
+        
+        # Return Notion results first, then web results
+        prioritized_results = notion_results + web_results
+        return prioritized_results[:count]
     
     async def search(self, query: str, count: int = 10) -> List[SearchResult]:
         """Search using available search APIs (fallback to Exa if Brave fails)"""

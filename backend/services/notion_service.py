@@ -107,9 +107,21 @@ class NotionService:
         
         async with httpx.AsyncClient() as client:
             try:
+                print(f"DEBUG: Notion search URL: {url}")
+                print(f"DEBUG: Notion search payload: {payload}")
                 response = await client.post(url, headers=headers, json=payload, timeout=10.0)
+                print(f"DEBUG: Notion search response status: {response.status_code}")
+                
+                if response.status_code != 200:
+                    error_text = await response.aread()
+                    print(f"DEBUG: Notion search error response: {error_text}")
+                
                 response.raise_for_status()
                 data = response.json()
+                print(f"DEBUG: Notion search returned {len(data.get('results', []))} results")
+                if data.get("results"):
+                    for i, result in enumerate(data["results"][:2]):  # Log first 2 results
+                        print(f"DEBUG: Result {i+1} - ID: {result.get('id')}, Object: {result.get('object')}")
                 return data.get("results", [])
             except Exception as e:
                 print(f"Failed to search pages: {e}")
@@ -152,7 +164,18 @@ class NotionService:
     async def search_notion_content(self, access_token: str, query: str, limit: int = 5) -> List[SearchResult]:
         """Search Notion content and return SearchResult objects"""
         try:
+            print(f"DEBUG: Starting real Notion search for query: '{query}'")
+            
+            # First, let's see ALL pages the integration has access to (no query filter)
+            all_pages = await self.get_all_accessible_pages(access_token)
+            print(f"DEBUG: Integration has access to {len(all_pages)} total pages")
+            for i, page in enumerate(all_pages[:3]):  # Show first 3 pages
+                title = self.get_page_title(page)
+                print(f"DEBUG: Page {i+1}: '{title}' (ID: {page.get('id', 'Unknown')})")
+            
+            # Now search with the query
             pages = await self.search_pages(access_token, query, limit)
+            print(f"DEBUG: Query '{query}' returned {len(pages)} pages")
             results = []
             
             for page in pages:
